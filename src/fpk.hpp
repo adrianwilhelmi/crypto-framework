@@ -6,72 +6,75 @@
 #include<stdexcept>
 #include<vector>
 
+#include"bigint.hpp"
 #include"utils.hpp"
 #include"polynomial_utils.hpp"
 #include"fp.hpp"
 
 namespace field{
 
-template<int p, int k>
+template<auto p, int k>
 struct AutoIrreducible{
 	static constexpr std::array<Fp<p>, k+1> value =
 		utils::find_first_irreducible<p, static_cast<std::size_t>(k)>();
 };
 
 
-template<int p, int k, typename IrreduciblePolynomial>
-requires(utils::is_prime(p))
+template<auto p, int k, typename IrreduciblePolynomial>
+//requires(utils::is_prime<decltype(p)::bits>(p))
 class FpkImpl;
 
-template<int k, typename IrreduciblePolynomial>
-requires(k>1)
+template<auto p, int k, typename IrreduciblePolynomial>
+requires(p==2 && k>1)
 class FpkBinaryImpl;
 
 
-template<int p, int k, typename IP>
+template<auto p, int k, typename IP>
 struct FpkSelector{
 	using type = FpkImpl<p,k,IP>;
 };
 
-template<int p, typename IP>
+template<auto p, typename IP>
 struct FpkSelector<p,1,IP>{
 	using type = Fp<p>;
 };
 
-template<int k, typename IP>
-struct FpkSelector<2,k,IP>{
-	using type = FpkBinaryImpl<k,IP>;
+template<auto p, int k, typename IP>
+requires(p==2 && k > 1)
+struct FpkSelector<p,k,IP>{
+	using type = FpkBinaryImpl<p,k,IP>;
 };
 
-template<typename IP>
-struct FpkSelector<2,1,IP>{
-	using type = Fp<2>;
-};
-
-template<int p, int k, typename IP = AutoIrreducible<p,k>>
-requires(utils::is_prime(p) && k >= 1)
+template<auto p, int k, typename IP = AutoIrreducible<p,k>>
+requires(k >= 1)
 using Fpk = typename FpkSelector<p,k,IP>::type;
 
 
 
-template<int p, int k, typename IrreduciblePolynomial = AutoIrreducible<p,k>>
-requires(utils::is_prime(p))
+template<auto p, int k, typename IrreduciblePolynomial = AutoIrreducible<p,k>>
+//requires(utils::is_prime<decltype(p)::bits>(p))
 class FpkImpl{
 public:
-	static constexpr int characteristic = p;
-
+	using bint_t = std::decay_t<decltype(p)>;
 	using BaseFp = Fp<p>;
+
+	static constexpr bint_t characteristic = p;
+	static constexpr int extension_degree = k;
 
 	constexpr FpkImpl() noexcept {
 		element_.fill(BaseFp(0));
 	}
 
-	constexpr FpkImpl(const std::array<BaseFp, k>& coeffs) noexcept : element_(coeffs) {}
+	constexpr FpkImpl(const std::array<BaseFp, k>& coeffs) noexcept
+		: element_(coeffs) {}
 
 	constexpr FpkImpl(BaseFp val) noexcept{
 		element_.fill(BaseFp(0));
 		element_[0] = val;
 	}
+
+	constexpr FpkImpl(uint64_t val) noexcept : FpkImpl(BaseFp(val)) {}
+	constexpr FpkImpl(int val) noexcept : FpkImpl(BaseFp(val)) {}
 
 	constexpr BaseFp& operator[](std::size_t i) noexcept {
 		return element_[i];
@@ -129,14 +132,24 @@ public:
 		return *this;
 	}
 
-	constexpr FpkImpl pow(std::uint64_t exponent) const{
+	template<typename ExpType = bint_t>
+	constexpr FpkImpl pow(ExpType exponent) const{
 		FpkImpl base = *this;
 		FpkImpl result(BaseFp(1));
 
-		while(exponent > 0){
-			if(exponent & 1ULL) result *= base;
-			exponent >>= 1ULL;
-			if(exponent > 0) base *= base;
+		if constexpr(std::is_integral_v<ExpType>){
+			while(exponent > 0){
+				if(exponent & 1ULL) result *= base;
+				exponent >>= 1ULL;
+				if(exponent > 0) base *= base;
+			}
+		}
+		else{
+			while(!exponent.is_zero()){
+				if(exponent.is_odd()) result *= base;
+				exponent >>= 1ULL;
+				if(!exponent.is_zero()) base *= base;
+			}
 		}
 
 		return result;
@@ -148,14 +161,14 @@ public:
 		}
 
 		// a^(-1) = a^(p^k - 2)
-		FpkImpl result = pow(static_cast<std::uint64_t>(p-2));
-		FpkImpl power = pow(static_cast<std::uint64_t>(p));
+		FpkImpl result = pow(p-2);
+		FpkImpl power = pow(p);
 
 		for(int i = 1; i < k; ++i){
-			result *= power.pow(static_cast<std::uint64_t>(p-1));
+			result *= power.pow(p-1);
 
 			if(i+1 < k){
-				power = power.pow(static_cast<std::uint64_t>(p));
+				power = power.pow(p);
 			}
 		}
 
@@ -217,13 +230,14 @@ private:
 
 
 // partial specialization for k = 2
-template<int k, typename IrreduciblePolynomial = AutoIrreducible<2,k>>
-requires(k>1)
+template<auto p, int k, typename IrreduciblePolynomial = AutoIrreducible<p,k>>
+requires(p==2 && k>1)
 class FpkBinaryImpl{
 public:
-	static constexpr int characteristic = 2;
+	using bint_t = std::decay_t<decltype(p)>;
+	static constexpr bint_t characteristic = p;
 
-	using BaseFp = Fp<2>;
+	using BaseFp = Fp<p>;
 
 	static constexpr std::size_t word_count = static_cast<std::size_t>((k+63)/64);
 
@@ -435,8 +449,8 @@ private:
 
 } // namespace field
 
-template<int p, int k, typename IP = AutoIrreducible<p,k>>
-requires(utils::is_prime(p))
+template<auto p, int k, typename IP = AutoIrreducible<p,k>>
+//requires(utils::is_prime(p))
 inline std::ostream& operator<<(std::ostream& os, const field::FpkImpl<p,k,IP>& x){
 	for(std::size_t i = 0; i < k; ++i){
 		if(i > 0) os << ' ';
@@ -445,9 +459,9 @@ inline std::ostream& operator<<(std::ostream& os, const field::FpkImpl<p,k,IP>& 
 	return os;
 }
 
-template<int k, typename IP>
-requires(k > 1)
-inline std::ostream& operator<<(std::ostream& os, const field::FpkBinaryImpl<k,IP>& x){
+template<auto p, int k, typename IP>
+requires(p==2 && k > 1)
+inline std::ostream& operator<<(std::ostream& os, const field::FpkBinaryImpl<p,k,IP>& x){
 	for(std::size_t i = 0; i < k; ++i){
 		if(i > 0) os << ' ';
 		os << x[i];
@@ -455,8 +469,8 @@ inline std::ostream& operator<<(std::ostream& os, const field::FpkBinaryImpl<k,I
 	return os;
 }
 
-template<int p, std::size_t N>
-requires(utils::is_prime(p))
+template<auto p, std::size_t N>
+//requires(utils::is_prime(p))
 inline std::ostream& operator<<(std::ostream& os, const std::array<Fp<p>,N>& x){
 	os << '[';
 	for(std::size_t i = 0; i < N; ++i){

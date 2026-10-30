@@ -86,20 +86,19 @@ inline std::vector<std::uint8_t> hex_to_bytes(const std::string& hex){
 }
 
 // fields
-template<int p>
+template<auto p>
 std::string serialize(const field::Fp<p>& elem, Encoding enc){
-	std::uint64_t val = elem.value();
-	if(enc==Encoding::Base10) return std::to_string(val);
-	else if(enc==Encoding::Base16){
-		std::ostringstream oss;
-		oss << "0x" << std::hex << val;
-		return oss.str();
-	}
+	using bint_t = std::decay_t<decltype(p)>;
+
+	bint_t val = elem.value();
+	if(enc==Encoding::Base10) return val.to_string();
+	else if(enc==Encoding::Base16) return val.to_hex();
 	else if(enc==Encoding::Base64){
 		std::vector<std::uint8_t> bytes;
-		while(val>0){
-			bytes.push_back(static_cast<std::uint8_t>(val&0xFF));
-			val >>= 8;
+		bint_t temp = val;
+		while(!temp.is_zero()){
+			bytes.push_back(static_cast<std::uint8_t>(temp.get_word(0)&0xFF));
+			temp >>= 8;
 		}
 		if(bytes.empty()) bytes.push_back(0);
 		std::reverse(bytes.begin(), bytes.end());
@@ -111,25 +110,33 @@ std::string serialize(const field::Fp<p>& elem, Encoding enc){
 template<typename TargetType>
 TargetType deserialize(const std::string& str, Encoding enc);
 
-template<int p>
+template<auto p>
 field::Fp<p> deserialize_fp(const std::string& str, Encoding enc){
+	using bint_t = std::decay_t<decltype(p)>;
 	if(enc==Encoding::Base10){
-		return field::Fp<p>(static_cast<int>(std::stoull(str,nullptr,10)));
+		bint_t val = bint_t::from_string(str);
+		return field::Fp<p>(val);
 	}
 	else if(enc==Encoding::Base16){
-		return field::Fp<p>(static_cast<int>(std::stoull(str,nullptr,16)));
+		bint_t val = bint_t::from_hex(str);
+		return field::Fp<p>(val);
 	}
 	else if(enc==Encoding::Base64){
 		auto bytes = base64_to_bytes(str);
-		std::uint64_t val = 0;
-		for(auto b : bytes) val = (val << 8) | b;
-		return field::Fp<p>(static_cast<int>(val));
+		bint_t val = 0;
+		for(auto b : bytes){
+			val <<= 8;
+			val += static_cast<std::uint64_t>(b);
+		}
+		return field::Fp<p>(val);
 	}
 	return 0;
 }
 
-template<int k, typename IP>
-std::string serialize(const field::FpkBinaryImpl<k,IP>& elem, Encoding enc){
+static constexpr BigInt<2> two{2};
+
+template<auto p, int k, typename IP>
+std::string serialize(const field::FpkBinaryImpl<p,k,IP>& elem, Encoding enc){
 	// format:
 	//	 <serialize(f[k-1..k-8])><serialize(f[k-9..k-16])>...<serialize(f[8...0])>
 	constexpr std::size_t word_count = (k+63) / 64;
@@ -158,9 +165,9 @@ std::string serialize(const field::FpkBinaryImpl<k,IP>& elem, Encoding enc){
 	}
 }
 
-template<int k, typename IP>
-field::FpkBinaryImpl<k,IP> deserialize_f2m(const std::string& str, Encoding enc){
-	field::FpkBinaryImpl<k,IP> elem;
+template<auto p, int k, typename IP>
+field::FpkBinaryImpl<p,k,IP> deserialize_f2m(const std::string& str, Encoding enc){
+	field::FpkBinaryImpl<p,k,IP> elem;
 	if(enc == Encoding::Base10){
 		for(std::size_t i = 0; i < str.length() && i < static_cast<std::size_t>(k);++i){
 			if(str[str.length()-1-i] == '1'){
@@ -182,7 +189,7 @@ field::FpkBinaryImpl<k,IP> deserialize_f2m(const std::string& str, Encoding enc)
 	return elem;
 }
 
-template<int p, int k, typename IP>
+template<auto p, int k, typename IP>
 std::string serialize(const field::FpkImpl<p,k,IP>& elem, Encoding enc){
 	// format: <serialize(f[0])>;<serialize(f[1])>;...;<serialize(f[k-1])>
 	std::ostringstream oss;
@@ -193,7 +200,7 @@ std::string serialize(const field::FpkImpl<p,k,IP>& elem, Encoding enc){
 	return oss.str();
 }
 
-template<int p, int k, typename IP>
+template<auto p, int k, typename IP>
 field::FpkImpl<p,k,IP> deserialize_fpk(const std::string& str, Encoding enc){
 	field::FpkImpl<p,k,IP> elem;
 	std::stringstream ss(str);
@@ -208,21 +215,21 @@ field::FpkImpl<p,k,IP> deserialize_fpk(const std::string& str, Encoding enc){
 template<typename Field>
 struct FieldDeserializer;
 
-template<int p>
+template<auto p>
 struct FieldDeserializer<field::Fp<p>>{
 	static field::Fp<p> parse(const std::string& str, Encoding enc){
 		return deserialize_fp<p>(str,enc);
 	}
 };
 
-template<int k, typename IP>
-struct FieldDeserializer<field::FpkBinaryImpl<k,IP>>{
-	static field::FpkBinaryImpl<k,IP> parse(const std::string& str, Encoding enc){
-		return deserialize_f2m<k,IP>(str,enc);
+template<auto p, int k, typename IP>
+struct FieldDeserializer<field::FpkBinaryImpl<p,k,IP>>{
+	static field::FpkBinaryImpl<p,k,IP> parse(const std::string& str, Encoding enc){
+		return deserialize_f2m<p,k,IP>(str,enc);
 	}
 };
 
-template<int p, int k, typename IP>
+template<auto p, int k, typename IP>
 struct FieldDeserializer<field::FpkImpl<p,k,IP>>{
 	static field::FpkImpl<p,k,IP> parse(const std::string& str, Encoding enc){
 		return deserialize_fpk<p,k,IP>(str,enc);

@@ -1,38 +1,56 @@
 #pragma once
 
 #include<iostream>
+#include<cstdint>
 
 #include"utils.hpp"
 
 namespace field{
 
 template<auto Modulus>
+//requires(utils::is_prime<decltype(Modulus)::bits>(Modulus))
 class Fp{
 public:
-	using BigIntType = std::decay_t<decltype(Modulus)>;
-	static constexpr BigIntType characteristic = Modulus;
-	static constexpr int bit_count = BigIntType::bits;
+	using bint_t = std::decay_t<decltype(Modulus)>;
+	static constexpr bint_t characteristic = Modulus;
+	static constexpr int bit_count = bint_t::bits;
 
 	constexpr Fp() noexcept : value_(0) {}
 
-	explicit constexpr Fp(uint64_t val) noexcept 
-		: value_(BigIntType(val) % Modulus){}
-
-	explicit constexpr Fp(BigIntType val) noexcept
-		: value_(val % Modulus){}
-
-	constexpr Fp(long long val = 0) noexcept{
-		if(val < 0){
-			uint64_t abs_v = static_cast<uint64_t>(-val);
-			BigIntType rem = BigIntType(abs_v) % Modulus;
-			value_ = rem.is_zero() ? BigIntType(0) : (Modulus - rem);
+	template<typename T>
+	requires std::is_integral_v<T>
+	explicit constexpr Fp(T val) noexcept{
+		if constexpr(bint_t::bits < 64){
+			uint64_t mod_val = Modulus.get_word(0);
+			int64_t m = static_cast<int64_t>(mod_val);
+			int64_t v = static_cast<int64_t>(val) % m;
+			if(v < 0) v += m;
+			value_ = bint_t(static_cast<uint64_t>(v));
 		}
 		else{
-			value_ = BigIntType(static_cast<int64_t>(val)) % Modulus;
+			if constexpr(std::is_signed_v<T>){
+				if(val < 0){
+					int64_t v = static_cast<int64_t>(val);
+					bint_t abs_v(static_cast<uint64_t>(-v));
+					if(abs_v >= Modulus) abs_v = abs_v % Modulus;
+					value_ = Modulus - abs_v;
+					if(value_ == Modulus) value_ = bint_t(0);
+					return;
+				}
+			}
+			bint_t v(static_cast<uint64_t>(val));
+			if(v >= Modulus) v = v % Modulus;
+			value_ = v;
 		}
 	}
 
-	constexpr int value() const noexcept {
+	constexpr Fp(bint_t val) noexcept
+		: value_(val % Modulus){}
+
+	constexpr Fp(uint64_t val) noexcept 
+		: value_(bint_t(val) % Modulus){}
+
+	constexpr const bint_t& value() const noexcept {
         return value_;
 	}
 
@@ -45,22 +63,32 @@ public:
 	}
 
 	constexpr Fp& operator+=(const Fp& rhs) noexcept {
-		value_ += rhs.value_;
-		if(value_ >= Modulus) value_ -= Modulus;
+		bint_t diff = Modulus - rhs.value_;
+		if(value_ >= diff){
+			value_ -= diff;
+		}
+		else{
+			value_ += rhs.value_;
+		}
 		return *this;
 	}
 
 	constexpr Fp& operator-=(const Fp& rhs) noexcept {
-		if(value_ < rhs.value_) value += Modulus;
-		value_ += Modulus
-		return *this;
+		if(value_ < rhs.value_){
+			value_ = Modulus - (rhs.value_ - value_);
+		}
+		else{
+			value_ -= rhs.value_;
+		}
+		return*this;
 	}
 
 	constexpr Fp& operator*=(const Fp& rhs) noexcept {
-		using WideInt = BigIntType<bit_count*2>;
-		WideInt a_wide = BigIntType::cast<bit_count*2, bit_count>(*this);
-		WideInt b_wide = BigIntType::cast<bit_count*2, bit_count>(rhs);
-		value_ = BigIntType::cast<bit_count, bit_count*2>(a*b % Modulus);
+		using WideInt = BigInt<bit_count*2>;
+		WideInt a_wide = cast<bit_count*2, bit_count>(value_);
+		WideInt b_wide = cast<bit_count*2, bit_count>(rhs.value_);
+		WideInt m_wide = cast<bit_count*2, bit_count>(Modulus);
+		value_ = cast<bit_count, bit_count*2>(a_wide*b_wide % m_wide);
 		return *this;
 	}
 
@@ -85,7 +113,11 @@ public:
 	}
 
 	constexpr Fp operator-() const noexcept{
-		return Fp(-static_cast<long long>(value_));
+		if(value_.is_zero()) return*this;
+
+		Fp res;
+		res.value_ = Modulus - value_;
+		return res;
 	}
 
 	constexpr bool operator==(const Fp& rhs) const noexcept = default;
@@ -95,12 +127,12 @@ public:
 
 		// fermats little theorem
 		// a^(-1) = a^(p - 2)
-		BigIntType exp = Modulus - 2;
+		bint_t exp = Modulus - 2;
 		Fp base = *this;
 		Fp result(1ULL);
 
-		while(exp > 0){
-			if(exp & 1){
+		while(!exp.is_zero()){
+			if(exp.is_odd()){
 				result *= base;
 			}
 
@@ -112,11 +144,11 @@ public:
 	}
 
 private:
-	BigIntType value_{};
+	bint_t value_{};
 };
 
-template<int p>
-requires(utils::is_prime(p))
+template<auto p>
+requires(utils::is_prime<decltype(p)::bits>(p))
 inline std::ostream& operator<<(std::ostream& os, const Fp<p>& x){
 	return os << x.value();
 }

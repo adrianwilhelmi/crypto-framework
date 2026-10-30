@@ -65,9 +65,17 @@ void test_bigint_scalar_ops(){
 	ASSERT_EQ(quo * den + rem, num);
 }
 
+void test_bigint_4096(){
+	BigInt<4096> m = BigInt<4096>::max();
+	BigInt<4096> expected = ~BigInt<4096>(0);
+	ASSERT_EQ(m, expected);
+}
+
+
 void tests_bigint(){
 	test_bigint_add();
 	test_bigint_mul();
 	test_bigint_divrem();
 	test_bigint_scalar_ops();
+	test_bigint_4096();
 }

@@ -1,5 +1,6 @@
 #pragma once
 
+#include<string>
 #include<array>
 #include<iostream>
 #include<cstddef>
@@ -8,11 +9,15 @@
 #include<compare>
 #include<string_view>
 #include<iomanip>
+#include<limits>
+#include<algorithm>
 
 template<uint64_t N>
 class BigInt{
 public:
-	static constexpr int bits = N;
+	static constexpr uint64_t bits = N;
+	static constexpr std::size_t word_count = static_cast<std::size_t>((N+63)/64);
+	std::array<std::uint64_t, word_count> words_{};
 
 	constexpr BigInt() noexcept{
 		words_.fill(0);
@@ -41,6 +46,17 @@ public:
 			else if(c >= 'a' && c <= 'f') val = c - 'a' + 10;
 			else if(c >= 'A' && c <= 'F') val = c - 'A' + 10;
 			res += BigInt(val);
+		}
+		return res;
+	}
+
+	static constexpr BigInt from_string(std::string_view str) noexcept{
+		BigInt res(0);
+		for(char c : str){
+			if(c >= '0' && c <= '9'){
+				res *= 10ULL;
+				res += static_cast<uint64_t>(c-'0');
+			}
 		}
 		return res;
 	}
@@ -370,6 +386,14 @@ public:
 		return*this;
 	}
 
+	constexpr BigInt& operator%=(uint64_t rhs) noexcept{
+		BigInt quo;
+		uint64_t rem;
+		div_rem_scalar(*this, rhs, quo, rem);
+		*this = BigInt(rem);
+		return*this;
+	}
+
 	constexpr uint64_t operator%(uint64_t rhs) const noexcept{
 		BigInt quo;
 		uint64_t rem;
@@ -384,19 +408,55 @@ public:
 	friend constexpr BigInt operator*(uint64_t a, BigInt b) noexcept {return b *= a;}
 	friend constexpr BigInt operator/(BigInt a, uint64_t b) noexcept {return a /= b;}
 
-	template<uint64_t TargetBits, uint64_t SourceBits>
-	static constexpr BigInt<TargetBits> cast(const BigInt<SourceBits>& src) noexcept{
-		BigInt<TargetBits> dst;
-		constexpr std::size_t words_to_copy = std::min((SourceBits+63)/64, (TargetBits+63)/64);
-		for(std::size_t i = 0; i < words_to_copy; ++i)
-			dst.set_word(i,src.get_word(i));
-		return dst;
+	static constexpr BigInt<N> max(){
+		BigInt<N> result;
+		for(std::size_t i = 0; i < N; ++i){
+			result.set_bit(i,1);
+		}
+		result.words_[word_count-1] &= top_mask_;
+		return result;
+	}
+
+	constexpr std::string to_string() const{
+		if(is_zero()) return "0";
+
+		if constexpr(N<=64){
+			return std::to_string(words_[0]);
+		}
+		BigInt temp = *this;
+		std::string res;
+		while(!temp.is_zero()){
+			uint64_t rem = temp % 10ULL;
+			res.push_back(static_cast<char>('0' + rem));
+			temp /= 10ULL;
+		}
+
+		std::reverse(res.begin(), res.end());
+		return res;
+	}
+
+	std::string to_hex() const{
+		if(is_zero()) return "0x0";
+
+		std::ostringstream oss;
+		oss << "0x";
+		bool first_word = true;
+
+		for(std::size_t i = word_count; i-- > 0;){
+			uint64_t w = words_[i];
+			if(first_word){
+				if(w == 0) continue;
+				oss << std::hex << w;
+				first_word = false;
+			}
+			else{
+				oss << std::hex << std::setw(16) << std::setfill('0') << w;
+			}
+		}
+		return oss.str();
 	}
 
 private:
-	static constexpr std::size_t word_count = static_cast<std::size_t>((N+63)/64);
-	std::array<std::uint64_t, word_count> words_{};
-
 	static constexpr std::uint64_t top_word_mask() noexcept{
 		constexpr std::size_t rem = N % 64;
 		if constexpr(rem == 0) return ~0ULL;
@@ -406,7 +466,7 @@ private:
 	static constexpr std::uint64_t top_mask_ = top_word_mask();
 };
 
-template<int N>
+template<uint64_t N>
 inline std::ostream& operator<<(std::ostream& os, BigInt<N>& x){
 	std::size_t word_count = static_cast<std::size_t>((N+63)/64);
 	for(std::size_t i = word_count; i-- > 0;){
@@ -416,3 +476,11 @@ inline std::ostream& operator<<(std::ostream& os, BigInt<N>& x){
 	return os;
 }
 
+template<uint64_t TargetBits, uint64_t SourceBits>
+static constexpr BigInt<TargetBits> cast(const BigInt<SourceBits>& src) noexcept{
+	BigInt<TargetBits> dst;
+	constexpr std::size_t words_to_copy = std::min((SourceBits+63)/64, (TargetBits+63)/64);
+	for(std::size_t i = 0; i < words_to_copy; ++i)
+		dst.set_word(i,src.get_word(i));
+	return dst;
+}

@@ -1,3 +1,4 @@
+#include"bigint.hpp"
 #include"fp.hpp"
 #include"fpk.hpp"
 #include"elliptic.hpp"
@@ -5,7 +6,8 @@
 #include"test_framework.hpp"
 
 void test_general_curve_fp(){
-	using F5 = field::Fp<5>;
+	constexpr BigInt<3> five(5);
+	using F5 = field::Fp<five>;
 
 	crypto::EllipticCurve<F5> curve(F5(2), F5(1));
 
@@ -34,7 +36,8 @@ void test_general_curve_fp(){
 }
 
 void test_general_curve_fpk(){
-	using Field = field::Fpk<5,2>;
+	constexpr BigInt<3> five(5);
+	using Field = field::Fpk<five,2>;
 
 	crypto::EllipticCurve<Field> curve(Field(1), Field(2));
 
@@ -53,7 +56,8 @@ void test_general_curve_fpk(){
 }
 
 void test_binary_curve(){
-	using Field = Fpk<2,4>;
+	constexpr BigInt<2> two(2);
+	using Field = Fpk<two,4>;
 
 	Field a;
 	a[0] = 1;
@@ -95,7 +99,8 @@ void test_binary_curve(){
 }
 
 void test_curve_exceptions_and_edge_cases(){
-	using Field = Fp<5>;
+	constexpr BigInt<3> five(5);
+	using Field = Fp<five>;
 
 	bool caught_singular = false;
 	try{
@@ -125,7 +130,7 @@ void test_curve_exceptions_and_edge_cases(){
 }
 
 void test_general_curve_group_laws_fp(){
-	constexpr int p = 17;
+	constexpr BigInt<5> p(17);
 	using F = field::Fp<p>;
 
 	crypto::EllipticCurve<F> curve(2,1);
@@ -174,7 +179,8 @@ void test_general_curve_group_laws_fp(){
 }
 
 void test_binary_curve_exceptions(){
-	using F = field::Fpk<2,4>;
+	constexpr BigInt<2> two(2);
+	using F = field::Fpk<two,4>;
 
 	F a;
 	a[0] = 1;

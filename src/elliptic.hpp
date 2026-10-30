@@ -66,19 +66,15 @@ inline std::ostream& operator<<(std::ostream& os, const Point<Field>& p){
 	return os << "(" << p.x() << ", " << p.y() << ")";
 }
 
-template<typename Field, int Char = Field::characteristic>
+template<typename Field, auto Char = Field::characteristic>
 struct EllipticCurveSelector{
 	using type = EllipticCurveGeneral<Field>;
 };
 
-template<typename Field>
-struct EllipticCurveSelector<Field,2>{
+template<typename Field, auto Char>
+requires(Char==2)
+struct EllipticCurveSelector<Field,Char>{
 	using type = EllipticCurveBinary<Field>;
-};
-
-template<typename Field>
-struct EllipticCurveSelector<Field,3>{
-	using type = EllipticCurveChar3<Field>;
 };
 
 template<typename Field>
