@@ -71,6 +71,18 @@ void test_bigint_4096(){
 	ASSERT_EQ(m, expected);
 }
 
+void test_bigint_big(){
+	BigInt<65536> m = BigInt<65536>::max();
+	BigInt<65536> expected = ~BigInt<65536>(0);
+	ASSERT_EQ(m, expected);
+
+	BigInt<65536> b(std::numeric_limits<uint64_t>::max());
+	BigInt<65536> r(std::numeric_limits<uint64_t>::max());
+	b *= 4;
+	r *= 2;
+	ASSERT_EQ(b, r*2);
+}
+
 
 void tests_bigint(){
 	test_bigint_add();
@@ -78,4 +90,5 @@ void tests_bigint(){
 	test_bigint_divrem();
 	test_bigint_scalar_ops();
 	test_bigint_4096();
+	test_bigint_big();
 }

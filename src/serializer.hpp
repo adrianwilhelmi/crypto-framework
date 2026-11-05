@@ -15,8 +15,6 @@
 
 namespace ser{
 
-//detail
-
 enum class Encoding{
 	Base10,
 	Base16,
